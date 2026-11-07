@@ -1,0 +1,25 @@
+name: wcloud-probe
+on: workflow_dispatch
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: reachability
+        run: |
+          echo "runner-ip: $(curl -s https://api.ipify.org)"
+          for u in https://api.workos.cloud/v1/ping https://api.workos.cloud/github-actions https://git.workos.cloud/ https://talks.workos.cloud/ https://cli.workos.cloud/; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$u" || echo ERR)
+            echo "$u -> $code"
+          done
+      - name: oidc-exchange
+        run: |
+          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=alto" | jq -r .value)
+          echo "oidc-len: ${#TOKEN}"
+          echo "$TOKEN" > /dev/null
+          for body in "{\"token\":\"$TOKEN\"}" "{\"id_token\":\"$TOKEN\"}" "{\"oidc_token\":\"$TOKEN\"}"; do
+            code=$(curl -s -o /tmp/resp -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d "$body" https://api.workos.cloud/github-actions || echo ERR)
+            echo "POST /github-actions -> $code $(head -c 200 /tmp/resp 2>/dev/null)"
+          done
